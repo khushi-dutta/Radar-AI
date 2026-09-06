@@ -1,26 +1,23 @@
 /**
- * Seeds a demo account with a watchlist and a BACKDATED view baseline.
+ * Seeds the local watchlist with a BACKDATED view baseline.
  *
  * Why this exists: the central feature is "what changed since you last checked",
- * and a freshly created account has no last-check to compare against. Running
+ * and a fresh database has no last-check to compare against. Running
  * the app cold therefore shows the least interesting version of itself. This
- * script fabricates a plausible history -- a user who last looked three days
+ * script fabricates a plausible history -- someone who last looked three days
  * ago, at prices slightly different from today's -- so the drift signal, the
  * time amplifier and the personal-threshold signal all have something real to
  * work with.
  *
  *   node scripts/seed-demo.js
  *
- * It is idempotent: re-running resets the demo user's list and baseline.
+ * It is idempotent: re-running resets the list and the baseline.
  */
 
 import { db, nowIso } from '../src/config/database.js';
-import { createUser, findByEmail } from '../src/models/userModel.js';
+import { getLocalUser } from '../src/models/userModel.js';
 import { addItem, markSeen, listItems } from '../src/models/watchlistModel.js';
 import { refreshSymbols, refreshBenchmarks, getCachedRows, toQuote } from '../src/services/marketData.js';
-
-const EMAIL = 'demo@groww.test';
-const PASSWORD = 'hunter2hunter2';
 
 const SYMBOLS = [
   'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'SBIN.NS',
@@ -41,17 +38,13 @@ const OFFSETS = [-0.031, 0.024, -0.018, 0.041, -0.009, 0.012, -0.052, 0.028, -0.
 const DAYS_AGO = 3;
 
 async function main() {
-  console.log('Seeding demo account...\n');
+  console.log('Seeding the demo watchlist...\n');
 
-  let user = findByEmail(EMAIL);
-  if (user) {
-    console.log(`Resetting existing ${EMAIL}`);
-    db.prepare('DELETE FROM watchlist_items WHERE user_id = ?').run(user.id);
-    db.prepare('DELETE FROM user_stock_views WHERE user_id = ?').run(user.id);
-  } else {
-    user = createUser(EMAIL, PASSWORD);
-    console.log(`Created ${EMAIL}`);
-  }
+  // Resolves the same single local identity the API runs as, creating it on a
+  // cold database. Clearing first is what makes re-running safe.
+  const user = getLocalUser();
+  db.prepare('DELETE FROM watchlist_items WHERE user_id = ?').run(user.id);
+  db.prepare('DELETE FROM user_stock_views WHERE user_id = ?').run(user.id);
 
   console.log('Fetching benchmarks and quotes (this hits upstream once per symbol)...');
   await refreshBenchmarks();
@@ -97,9 +90,7 @@ async function main() {
   db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(seenAt, user.id);
 
   console.log(`Set a baseline as of ${DAYS_AGO} days ago for ${observations.length} symbols\n`);
-  console.log('Demo ready:');
-  console.log(`  email:    ${EMAIL}`);
-  console.log(`  password: ${PASSWORD}`);
+  console.log('Demo ready — open the app; there is no sign-in step.');
   console.log(`\nBecause the baseline is ${DAYS_AGO} days old, the time amplifier is near its cap,`);
   console.log('so genuine moves since that baseline will rank above ordinary intraday noise.');
 

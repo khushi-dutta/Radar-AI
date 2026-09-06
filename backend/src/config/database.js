@@ -32,12 +32,15 @@ db.pragma('busy_timeout = 5000');
  *                between accounts. Nothing in this system settles a trade.
  */
 const SCHEMA = `
+-- There are no accounts and no credentials; see middleware/localUser.js for why
+-- the table survives anyway. \`label\` is a human-readable handle for reading the
+-- database by hand, not an identity to authenticate against.
 CREATE TABLE IF NOT EXISTS users (
-  id            TEXT PRIMARY KEY,
-  email         TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  last_seen_at  TEXT
+  id           TEXT PRIMARY KEY,
+  label        TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  last_seen_at TEXT,
+  preferences  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS watchlist_items (
@@ -128,10 +131,50 @@ CREATE TABLE IF NOT EXISTS activity_log (
 
 db.exec(SCHEMA);
 
-try {
-  db.exec('ALTER TABLE users ADD COLUMN preferences TEXT;');
-} catch (e) {
-  // column likely already exists
+/**
+ * Migrations.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already has
+ * the table, so schema *changes* need explicit handling. These run in order and
+ * are all idempotent -- each checks the live shape before touching anything.
+ */
+const userColumns = () => db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+
+// Added after the first release, when per-user signal weights arrived.
+if (!userColumns().includes('preferences')) {
+  db.exec('ALTER TABLE users ADD COLUMN preferences TEXT');
+}
+
+// Accounts were removed: drop password_hash, and rename email -> label. SQLite
+// cannot drop a column or a NOT NULL constraint in place, so the table is
+// rebuilt. Foreign keys are disabled for the swap because watchlist_items,
+// user_stock_views, alert_rules and activity_log all reference users(id) --
+// row ids are preserved, so those rows reattach to the same user afterwards.
+if (userColumns().includes('password_hash')) {
+  console.log('[db] migrating users table: removing credentials');
+  db.pragma('foreign_keys = OFF'); // must be outside a transaction to take effect
+  try {
+    db.exec(`
+      BEGIN;
+      CREATE TABLE users_new (
+        id           TEXT PRIMARY KEY,
+        label        TEXT NOT NULL,
+        created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        last_seen_at TEXT,
+        preferences  TEXT
+      );
+      INSERT INTO users_new (id, label, created_at, last_seen_at, preferences)
+        SELECT id, email, created_at, last_seen_at, preferences FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+      COMMIT;
+    `);
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 export function nowIso() {

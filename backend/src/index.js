@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 
-import authRoutes from './routes/auth.js';
 import watchlistRoutes from './routes/watchlist.js';
 import marketRoutes from './routes/market.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
@@ -58,7 +57,6 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, worker: worker.health(), uptimeSeconds: Math.round(process.uptime()) });
 });
 
-app.use('/api/auth', authRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api', marketRoutes);
 

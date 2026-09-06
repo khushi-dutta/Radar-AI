@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, getToken, setToken } from './services/api.js';
+import { api } from './services/api.js';
 import { useWatchlist } from './hooks/useWatchlist.js';
 
-import Login from './components/Login.jsx';
 import MarketStatusBadge from './components/MarketStatusBadge.jsx';
 import DataFreshnessBanner from './components/DataFreshnessBanner.jsx';
 import AddStockSearch from './components/AddStockSearch.jsx';
@@ -39,8 +38,6 @@ function Toast({ toast, onDismiss }) {
 }
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
   const [view, setView] = useState('changes');
   const [detail, setDetail] = useState(null);
   const [toast, setToast] = useState(null);
@@ -67,18 +64,11 @@ export default function App() {
 
   const notify = useCallback((message, kind = 'info') => setToast({ message, kind }), []);
 
-  // Authentication is disabled per user request
-  useEffect(() => {
-    setUser({ id: 'demo', email: 'demo@groww.test' });
-    setAuthChecked(true);
-  }, []);
-
-  // Market status is public, so the sign-in screen can show it too.
   useEffect(() => {
     api.marketStatus().then((s) => setMarket(s.market)).catch(() => {});
   }, []);
 
-  const wl = useWatchlist({ enabled: Boolean(user) });
+  const wl = useWatchlist({ enabled: true });
 
   const items = wl.data?.items ?? [];
   const significant = useMemo(
@@ -127,22 +117,9 @@ export default function App() {
     else notify('Could not mark as seen', 'error');
   }, [wl, notify]);
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-  };
-
   // Keep the open detail sheet in sync with streamed updates rather than
   // freezing it at the moment it was opened.
   const liveDetail = detail ? items.find((i) => i.symbol === detail.symbol) ?? detail : null;
-
-  if (!authChecked) {
-    return <div className="min-h-screen grid place-items-center text-muted text-sm">Loading…</div>;
-  }
-
-  if (!user) {
-    return <Login onAuthed={setUser} market={market} />;
-  }
 
   // Derived from the acknowledgement baseline, not from this page load, so the
   // header and the per-card "since you last checked" numbers always describe

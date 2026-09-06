@@ -1,39 +1,59 @@
 import { randomUUID } from 'node:crypto';
-import bcrypt from 'bcryptjs';
 import { db, nowIso } from '../config/database.js';
 
-const insertUser = db.prepare(
-  'INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)'
+/**
+ * The local user row, and the per-user state hanging off it.
+ *
+ * No credentials are stored: this deployment has no accounts. `label` exists
+ * only so a row is legible when you open the database by hand.
+ */
+
+const insertUser = db.prepare('INSERT INTO users (id, label, created_at) VALUES (?, ?, ?)');
+const byId = db.prepare('SELECT id, label, created_at, last_seen_at, preferences FROM users WHERE id = ?');
+const byLabel = db.prepare('SELECT id, label, created_at, last_seen_at, preferences FROM users WHERE label = ?');
+const firstUser = db.prepare(
+  'SELECT id, label, created_at, last_seen_at, preferences FROM users ORDER BY created_at LIMIT 1'
 );
-const byEmail = db.prepare('SELECT * FROM users WHERE email = ?');
-const byId = db.prepare('SELECT id, email, created_at, last_seen_at, preferences FROM users WHERE id = ?');
 const touchSeen = db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?');
 const updatePrefs = db.prepare('UPDATE users SET preferences = ? WHERE id = ?');
 
-export function findByEmail(email) {
-  return byEmail.get(email) ?? null;
-}
+const LOCAL_LABEL = 'local';
 
 export function findById(id) {
   return byId.get(id) ?? null;
 }
 
-export function createUser(email, password) {
+export function findByLabel(label) {
+  return byLabel.get(label) ?? null;
+}
+
+/** Create a user row. Used by the local-identity resolver and by tests. */
+export function createUser(label = LOCAL_LABEL) {
   const id = randomUUID();
-  // 10 rounds: enough to be a real barrier, cheap enough that a demo login is
-  // not visibly slow. bcrypt is deliberate about being slow either way.
-  const hash = bcrypt.hashSync(password, 10);
-  insertUser.run(id, email, hash, nowIso());
-  return { id, email };
+  insertUser.run(id, label, nowIso());
+  return { id, label };
+}
+
+/**
+ * The single identity every request runs as.
+ *
+ * Prefers an existing row over creating one, so a database seeded before this
+ * function ever ran -- or seeded under a different label -- keeps its watchlist
+ * and its baselines instead of silently starting over behind an empty new user.
+ * Losing the baseline is losing the product's memory, so this falls back
+ * generously rather than insisting on an exact label match.
+ */
+export function getLocalUser() {
+  return byLabel.get(LOCAL_LABEL) ?? firstUser.get() ?? createLocalUser();
+}
+
+function createLocalUser() {
+  const { id } = createUser(LOCAL_LABEL);
+  return byId.get(id);
 }
 
 export function updateUserPreferences(id, preferencesObj) {
   updatePrefs.run(JSON.stringify(preferencesObj), id);
-}
-
-export function verifyPassword(user, password) {
-  if (!user?.password_hash) return false;
-  return bcrypt.compareSync(password, user.password_hash);
 }
 
 /**

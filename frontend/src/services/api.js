@@ -1,28 +1,10 @@
 /**
  * API client.
  *
- * One place that knows about tokens, error shapes and the base URL, so no
- * component ever touches fetch directly.
+ * One place that knows about error shapes and the base URL, so no component
+ * ever touches fetch directly. There are no credentials to carry: the server
+ * runs as a single local identity (see backend middleware/localUser.js).
  */
-
-const TOKEN_KEY = 'radar.token';
-
-export function getToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null; // private mode / storage disabled
-  }
-}
-
-export function setToken(token) {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    /* non-fatal: the session simply will not persist */
-  }
-}
 
 export class ApiError extends Error {
   constructor(message, { status, code, field } = {}) {
@@ -35,16 +17,12 @@ export class ApiError extends Error {
 }
 
 async function request(path, { method = 'GET', body, signal } = {}) {
-  const token = getToken();
   let res;
   try {
     res = await fetch(`/api${path}`, {
       method,
       signal,
-      headers: {
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (err) {
@@ -68,9 +46,6 @@ async function request(path, { method = 'GET', body, signal } = {}) {
 
   if (!res.ok) {
     const e = payload?.error ?? {};
-    // A 401 means the stored token is dead; clearing it here stops every
-    // subsequent request from retrying with a credential we know is invalid.
-    if (res.status === 401) setToken(null);
     throw new ApiError(e.message ?? `Request failed (${res.status})`, {
       status: res.status,
       code: e.code,
@@ -81,10 +56,6 @@ async function request(path, { method = 'GET', body, signal } = {}) {
 }
 
 export const api = {
-  register: (email, password) => request('/auth/register', { method: 'POST', body: { email, password } }),
-  login: (email, password) => request('/auth/login', { method: 'POST', body: { email, password } }),
-  me: () => request('/auth/me'),
-
   getWatchlist: ({ visit = false, signal } = {}) =>
     request(`/watchlist${visit ? '?visit=true' : ''}`, { signal }),
   refreshWatchlist: () => request('/watchlist/refresh', { method: 'POST' }),
@@ -105,8 +76,7 @@ export const api = {
   getActivity: () => request('/watchlist/activity'),
 };
 
-/** SSE URL. EventSource cannot set headers, so the token rides the query. */
+/** SSE endpoint. EventSource cannot set headers, which no longer matters. */
 export function streamUrl() {
-  const token = getToken();
-  return `/api/stream/watchlist${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  return '/api/stream/watchlist';
 }

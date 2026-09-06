@@ -143,7 +143,7 @@ describe('freshness classification', () => {
 describe('view state across concurrent sessions', () => {
   let userId;
   before(() => {
-    userId = userModel.createUser('race@test.local', 'password123').id;
+    userId = userModel.createUser('race@test.local').id;
     watchlistModel.addItem(userId, { symbol: 'AAA.NS' });
   });
 
@@ -179,7 +179,7 @@ describe('view state across concurrent sessions', () => {
 
 describe('duplicate handling', () => {
   test('the unique constraint is the authority, and it surfaces as a 409', () => {
-    const userId = userModel.createUser('dupe@test.local', 'password123').id;
+    const userId = userModel.createUser('dupe@test.local').id;
     watchlistModel.addItem(userId, { symbol: 'AAA.NS' });
     assert.throws(
       () => watchlistModel.addItem(userId, { symbol: 'AAA.NS' }),
@@ -190,7 +190,7 @@ describe('duplicate handling', () => {
 
 describe('large watchlist performance', () => {
   test('scoring 150 symbols stays well inside a frame budget', async () => {
-    const userId = userModel.createUser('whale@test.local', 'password123').id;
+    const userId = userModel.createUser('whale@test.local').id;
 
     const symbols = Array.from({ length: 150 }, (_, i) => `SYM${i}.NS`);
     for (const s of symbols) {
@@ -231,7 +231,7 @@ function i0(s) {
 
 describe('degraded reads', () => {
   test('a watchlist renders even when every symbol is unpriced', async () => {
-    const userId = userModel.createUser('dark@test.local', 'password123').id;
+    const userId = userModel.createUser('dark@test.local').id;
     watchlistModel.addItem(userId, { symbol: 'GHOST1.NS' });
     watchlistModel.addItem(userId, { symbol: 'GHOST2.NS' });
 
@@ -247,7 +247,7 @@ describe('degraded reads', () => {
   });
 
   test('unpriced symbols sort below priced ones regardless of score', async () => {
-    const userId = userModel.createUser('mixed@test.local', 'password123').id;
+    const userId = userModel.createUser('mixed@test.local').id;
     marketData.saveSnapshot(snapshot('GOOD.NS', { price: 100, sourceTs: '2026-09-04T06:00:00.000Z' }));
     watchlistModel.addItem(userId, { symbol: 'GOOD.NS' });
     watchlistModel.addItem(userId, { symbol: 'GHOST3.NS' });
@@ -260,7 +260,7 @@ describe('degraded reads', () => {
 describe('the "since you last checked" anchor', () => {
   let userId;
   before(() => {
-    userId = userModel.createUser('anchor@test.local', 'password123').id;
+    userId = userModel.createUser('anchor@test.local').id;
     marketData.saveSnapshot(snapshot('ANC1.NS', { price: 100, sourceTs: '2026-09-04T06:00:00.000Z' }));
     marketData.saveSnapshot(snapshot('ANC2.NS', { price: 200, sourceTs: '2026-09-04T06:00:00.000Z' }));
     watchlistModel.addItem(userId, { symbol: 'ANC1.NS' });

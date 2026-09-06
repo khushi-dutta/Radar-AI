@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { attachUser } from '../middleware/localUser.js';
 import { asyncRoute } from '../middleware/errorHandler.js';
 import {
   addItem,
@@ -26,7 +26,7 @@ import { listAlerts, addAlert, removeAlert } from '../models/alertModel.js';
 import { listLogs, addLog } from '../models/activityModel.js';
 
 const router = Router();
-router.use(requireAuth);
+router.use(attachUser);
 
 // A ceiling that exists to bound worst-case work per user, not to be reached.
 const MAX_WATCHLIST_SIZE = 150;

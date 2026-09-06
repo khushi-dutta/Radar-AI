@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { attachUser } from '../middleware/localUser.js';
 import { asyncRoute } from '../middleware/errorHandler.js';
 import { searchUniverse, lookup, SECTOR_INDICES } from '../config/universe.js';
 import { getBenchmarks, getCachedRows, toQuote, freshnessOf } from '../services/marketData.js';
@@ -12,7 +12,7 @@ const router = Router();
 
 /**
  * GET /api/market/status
- * Deliberately unauthenticated: the login screen shows market state too.
+ * Needs no user: it describes the exchange, not anyone's watchlist.
  */
 router.get('/market/status', (req, res) => {
   const benchmarks = [...getBenchmarks().entries()].map(([sector, b]) => ({
@@ -40,7 +40,7 @@ router.get('/market/status', (req, res) => {
  */
 router.get(
   '/search',
-  requireAuth,
+  attachUser,
   asyncRoute(async (req, res) => {
     const q = validateSearchQuery(req.query.q);
     if (q.length < 1) return res.json({ query: q, results: [] });
@@ -78,7 +78,7 @@ router.get(
 /** Cached quote for a single symbol; used by the detail panel. */
 router.get(
   '/quote/:symbol',
-  requireAuth,
+  attachUser,
   asyncRoute(async (req, res) => {
     const symbol = normalizeSymbol(req.params.symbol);
     const row = getCachedRows([symbol]).get(symbol) ?? null;
@@ -97,11 +97,8 @@ router.get(
  * HTTP (no upgrade path, no separate server), and browsers reconnect on their
  * own. A watchlist has no client->server realtime messages to send, so a
  * duplex protocol would be complexity bought for nothing.
- *
- * Auth arrives as a query param because EventSource cannot set headers -- an
- * accepted SSE limitation, noted here so it does not read as carelessness.
  */
-router.get('/stream/watchlist', requireAuth, (req, res) => {
+router.get('/stream/watchlist', attachUser, (req, res) => {
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',

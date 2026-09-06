@@ -42,26 +42,6 @@ function splitSuffix(s) {
   return [m[1], m[2]];
 }
 
-export function validateEmail(input) {
-  if (typeof input !== 'string') throw new ValidationError('Email is required', 'email');
-  const email = input.trim().toLowerCase();
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new ValidationError('Enter a valid email address', 'email');
-  }
-  return email;
-}
-
-export function validatePassword(input) {
-  if (typeof input !== 'string' || input.length < 8) {
-    throw new ValidationError('Password must be at least 8 characters', 'password');
-  }
-  // bcrypt silently truncates past 72 bytes; refusing is honest, truncating is not.
-  if (Buffer.byteLength(input, 'utf8') > 72) {
-    throw new ValidationError('Password must be at most 72 bytes', 'password');
-  }
-  return input;
-}
-
 /** Optional positive price. Explicit null clears the value. */
 export function validateOptionalPrice(value, field) {
   if (value === undefined) return undefined;
