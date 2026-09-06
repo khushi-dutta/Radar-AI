@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# SQLite database and its WAL sidecars — regenerate with scripts/seed-demo.js
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
+.DS_Store
+*.log

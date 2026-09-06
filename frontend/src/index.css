@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: 255 255 255;
+  --color-surface: 249 250 251;
+  --color-surface2: 243 244 246;
+  --color-border: 229 231 235;
+  --color-txt: 17 24 39;
+  --color-muted: 107 114 128;
+  --color-gain: 16 185 129;
+  --color-loss: 239 68 68;
+  --color-accent: 59 130 246;
+  --color-high: 139 92 246;
+  --color-warn: 245 158 11;
+}
+
+.dark {
+  --color-bg: 0 0 0;
+  --color-surface: 22 27 34;
+  --color-surface2: 28 33 41;
+  --color-border: 48 54 61;
+  --color-txt: 230 237 243;
+  --color-muted: 139 148 158;
+  --color-gain: 63 185 80;
+  --color-loss: 248 81 73;
+  --color-accent: 88 166 255;
+  --color-high: 210 168 255;
+  --color-warn: 210 153 34;
+}
+
+@layer base {
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply font-sans antialiased;
+    background-color: rgb(var(--color-bg));
+    color: rgb(var(--color-txt));
+    /* Respect notches on mobile; Groww's users are overwhelmingly on phones. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Numbers must not jitter as prices tick. */
+  .tnum { font-variant-numeric: tabular-nums; }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface border border-border rounded-xl;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2
+           text-sm font-medium transition-colors min-h-[44px]
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost { @apply btn text-muted hover:text-txt hover:bg-surface2; }
+  .btn-primary { @apply btn bg-accent/15 text-accent hover:bg-accent/25; }
+  .input {
+    @apply w-full bg-surface2 border border-border rounded-lg px-3 py-2.5
+           text-txt placeholder:text-muted/70 outline-none
+           focus:border-accent/60 focus:ring-1 focus:ring-accent/30;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1
+           text-xs font-medium whitespace-nowrap;
+  }
+}
+
+/* Keep focus rings for keyboard users without boxing every mouse click. */
+:focus-visible { outline: 2px solid #58A6FF; outline-offset: 2px; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #30363D; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
