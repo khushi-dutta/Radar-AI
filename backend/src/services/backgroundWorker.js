@@ -4,6 +4,7 @@ import {
   refreshSymbols,
   refreshBenchmarks,
 } from './marketData.js';
+import { evaluateAlerts } from './alertEngine.js';
 import { refreshIntervalMs, isMarketOpen, marketStatus } from '../utils/marketHours.js';
 
 /**
@@ -112,11 +113,10 @@ class RefreshWorker extends EventEmitter {
         marketStatus: marketStatus(),
       });
       
-      // Evaluate alerts asynchronously to avoid blocking the tick
+      // Alerts read the cache this tick just wrote, so they run after it and
+      // off the tick's critical path. A failure here must not stall refreshing.
       setImmediate(() => {
-        import('./alertEngine.js').then(({ evaluateAlerts }) => {
-          evaluateAlerts().catch(err => console.error('[worker] alert evaluation failed', err));
-        });
+        evaluateAlerts().catch((err) => console.error('[worker] alert evaluation failed', err));
       });
     } catch (err) {
       // A thrown tick must never kill the loop.

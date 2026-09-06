@@ -48,7 +48,7 @@ export default function App() {
   const [market, setMarket] = useState(null);
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pulse.theme');
+      const saved = localStorage.getItem('radar.theme');
       if (saved) return saved === 'dark';
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
@@ -58,10 +58,10 @@ export default function App() {
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('pulse.theme', 'dark');
+      localStorage.setItem('radar.theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('pulse.theme', 'light');
+      localStorage.setItem('radar.theme', 'light');
     }
   }, [isDark]);
 

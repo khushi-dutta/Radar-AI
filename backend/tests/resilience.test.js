@@ -6,7 +6,7 @@ import path from 'node:path';
 
 // Point the DB at a throwaway file BEFORE importing anything that opens it.
 // config/database.js opens on import, so ordering matters here.
-const TMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'pulse-test-'));
+const TMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'radar-test-'));
 process.env.DB_PATH = path.join(TMP_DIR, 'test.db');
 
 let db, marketData, watchlistModel, userModel, watchlistService;

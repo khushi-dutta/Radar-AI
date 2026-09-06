@@ -11,7 +11,7 @@ import {
   clearView,
   DuplicateSymbolError,
 } from '../models/watchlistModel.js';
-import { touchLastSeen } from '../models/userModel.js';
+import { touchLastSeen, updateUserPreferences } from '../models/userModel.js';
 import { buildWatchlist, observationsFor } from '../services/watchlistService.js';
 import { ensureFresh, refreshSymbols } from '../services/marketData.js';
 import { lookup } from '../config/universe.js';
@@ -21,12 +21,60 @@ import {
   validateOptionalPrice,
   ValidationError,
 } from '../utils/validation.js';
+import { fetchLatestNews } from '../services/newsService.js';
+import { listAlerts, addAlert, removeAlert } from '../models/alertModel.js';
+import { listLogs, addLog } from '../models/activityModel.js';
 
 const router = Router();
 router.use(requireAuth);
 
 // A ceiling that exists to bound worst-case work per user, not to be reached.
 const MAX_WATCHLIST_SIZE = 150;
+
+/* ------------------------------------------------- adaptive signal weights */
+
+const WEIGHT_DECAY = 0.95;   // the dismissed signal loses 5%
+const WEIGHT_RECOVER = 0.01; // every other signal creeps 1% back toward neutral
+const WEIGHT_FLOOR = 0.4;    // never silence a signal outright
+
+/**
+ * Nudge this user's per-signal salience multipliers after a dismissal.
+ *
+ * Decay ALONE was the obvious version and it is a one-way ratchet: dismissing
+ * is the ordinary way to clear a card, so every signal drifts monotonically
+ * toward the floor and the engine gradually goes deaf. Pairing decay with a
+ * slower recovery on the signals that were *not* dismissed gives the system a
+ * fixed point instead: a signal settles where the rate you dismiss it balances
+ * the rate you dismiss other things. It measures RELATIVE preference, which is
+ * the only thing a dismissal is actually evidence of.
+ *
+ * The floor is 0.4, not 0.1: this is inferred from clicks, not stated, and
+ * inference that weak should never be able to hide a 52-week breakout outright.
+ */
+function adjustSignalWeights(user, dismissedKey) {
+  let prefs = {};
+  if (user.preferences) {
+    try {
+      const parsed = JSON.parse(user.preferences);
+      if (parsed && typeof parsed === 'object') prefs = parsed;
+    } catch (err) {
+      console.warn(`[weights] unreadable preferences for user ${user.id}; resetting`, err.message);
+    }
+  }
+
+  for (const key of Object.keys(prefs)) {
+    if (key === dismissedKey) continue;
+    // Toward 1.0 from whichever side, so this cannot overshoot into inflation.
+    prefs[key] = Number((prefs[key] + (1 - prefs[key]) * WEIGHT_RECOVER).toFixed(4));
+  }
+
+  const current = typeof prefs[dismissedKey] === 'number' ? prefs[dismissedKey] : 1.0;
+  prefs[dismissedKey] = Number(Math.max(WEIGHT_FLOOR, current * WEIGHT_DECAY).toFixed(4));
+
+  updateUserPreferences(user.id, prefs);
+  // Keep the in-memory copy consistent for anything later in this request.
+  user.preferences = JSON.stringify(prefs);
+}
 
 /**
  * GET /api/watchlist
@@ -146,21 +194,12 @@ router.post(
       throw Object.assign(new Error(`${symbol} is not in your watchlist`), { status: 404 });
     }
 
-    // Adaptive algorithm: decay the weight of the dismissed signal
+    // Dismissing a card is weak evidence that the signal which headlined it is
+    // not what this user cares about. `personal` is excluded: a threshold they
+    // typed in themselves is an explicit instruction, not an inference we get
+    // to second-guess.
     if (reasonKey && reasonKey !== 'personal') {
-      const { updateUserPreferences } = await import('../models/userModel.js');
-      let prefs = {};
-      try {
-        prefs = req.user.preferences ? JSON.parse(req.user.preferences) : {};
-      } catch (e) {}
-      
-      const currentWeight = prefs[reasonKey] !== undefined ? prefs[reasonKey] : 1.0;
-      // Decay by 5%, floor at 0.1 so it's never completely zeroed out
-      prefs[reasonKey] = Math.max(0.1, currentWeight * 0.95);
-      
-      updateUserPreferences(req.user.id, prefs);
-      // Update req.user in memory for immediate subsequent calls if needed
-      req.user.preferences = JSON.stringify(prefs);
+      adjustSignalWeights(req.user, reasonKey);
     }
 
     const observations = observationsFor(req.user.id, [symbol]);
@@ -181,7 +220,6 @@ router.post(
   })
 );
 
-import { fetchLatestNews } from '../services/newsService.js';
 router.get(
   '/:symbol/news',
   asyncRoute(async (req, res) => {
@@ -191,7 +229,6 @@ router.get(
   })
 );
 
-import { listAlerts, addAlert, removeAlert } from '../models/alertModel.js';
 router.get('/alerts', asyncRoute(async (req, res) => {
   res.json({ alerts: listAlerts(req.user.id) });
 }));
@@ -205,7 +242,6 @@ router.delete('/alerts/:id', asyncRoute(async (req, res) => {
   res.json({ removed: req.params.id });
 }));
 
-import { listLogs, addLog } from '../models/activityModel.js';
 router.get('/activity', asyncRoute(async (req, res) => {
   res.json({ logs: listLogs(req.user.id) });
 }));

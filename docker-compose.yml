@@ -6,9 +6,9 @@ services:
       # Override in a real deployment; the server refuses the dev default
       # when NODE_ENV=production.
       JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-secret-change-me}
-      DB_PATH: /data/pulse.db
+      DB_PATH: /data/radar.db
     volumes:
-      - pulse-data:/data
+      - radar-data:/data
     restart: unless-stopped
 
   web:
@@ -20,4 +20,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  pulse-data:
+  radar-data:

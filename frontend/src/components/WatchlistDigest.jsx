@@ -24,7 +24,12 @@ function generateAiNarrative(data) {
   const breakout = significant.find(i => i.significance.reasons?.[0]?.key === 'breakout');
   const volume = significant.find(i => i.significance.reasons?.[0]?.key === 'volume');
   
-  let narrative = `Market sentiment leans ${avgDayChange >= 0 ? 'bullish' : 'bearish'} overall, with your tracked stocks ${avgDayChange >= 0 ? 'up' : 'down'} ${Math.abs(avgDayChange || 0)}% on average. `;
+  // avgDayChange is null when nothing on the list is priced. Reporting that as
+  // "bullish, up 0%" would be inventing a market view out of an outage.
+  let narrative =
+    typeof avgDayChange === 'number'
+      ? `Market sentiment leans ${avgDayChange >= 0 ? 'bullish' : 'bearish'} overall, with your tracked stocks ${avgDayChange >= 0 ? 'up' : 'down'} ${Math.abs(avgDayChange).toFixed(2)}% on average. `
+      : `We can't price your list right now, so there's no read on overall sentiment. `;
 
   if (dominantSector && sortedSectors[0][1] > 1) {
     narrative += `The ${dominantSector} sector is driving most of the action. `;

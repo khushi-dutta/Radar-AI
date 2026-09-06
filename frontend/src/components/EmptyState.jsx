@@ -7,7 +7,7 @@ export function EmptyWatchlist({ onAdd, busy }) {
       <div className="text-3xl mb-3" aria-hidden="true">📋</div>
       <h2 className="font-semibold text-lg">Your watchlist is empty</h2>
       <p className="mt-1.5 text-sm text-muted max-w-sm mx-auto">
-        Add a few stocks and Pulse will start tracking what meaningfully changes between your visits —
+        Add a few stocks and Radar AI will start tracking what meaningfully changes between your visits —
         not just the prices.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">

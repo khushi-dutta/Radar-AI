@@ -45,7 +45,7 @@ export default function Login({ onAuthed, market }) {
         <div className="text-center mb-7">
           <div className="inline-flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-gain animate-pulseDot" />
-            <h1 className="text-2xl font-semibold tracking-tight">Pulse</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Radar AI</h1>
           </div>
           <p className="mt-2 text-sm text-muted">
             Every watchlist shows prices. This one shows what changed.

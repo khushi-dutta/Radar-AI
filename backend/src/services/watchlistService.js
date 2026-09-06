@@ -19,8 +19,16 @@ import {
   ensureFresh,
 } from './marketData.js';
 import { computeSignificance, SIGNIFICANCE_THRESHOLD } from './significance.js';
+import { findDivergingCorrelations } from '../utils/math.js';
+import { findById } from '../models/userModel.js';
 import { lookup } from '../config/universe.js';
-import { marketStatus, isMarketOpen, nextTradingDay, istDateKey } from '../utils/marketHours.js';
+import {
+  marketStatus,
+  isMarketOpen,
+  nextTradingDay,
+  istDateKey,
+  sessionElapsedFraction,
+} from '../utils/marketHours.js';
 
 /**
  * How long a read may block waiting for a cold-cache refresh.
@@ -86,6 +94,53 @@ function aggregateFreshness(perItem, now) {
   };
 }
 
+/**
+ * Radar score: 0-100, "how much is going on in this list right now".
+ *
+ * The scale is DERIVED from the attention threshold rather than picked, because
+ * a dashboard number nobody can define is a number nobody should trust. The
+ * reference point is a list whose mean significance is a quarter of the
+ * threshold -- i.e. roughly one item in four is worth opening. That list reads
+ * 100. Anything busier saturates, which is correct: past "several things need
+ * you", more is not usefully distinguishable.
+ *
+ * Unavailable rows are excluded, not scored 0. Same rule as the engine: an
+ * outage must not render as calm.
+ */
+const RADAR_REFERENCE_MEAN = SIGNIFICANCE_THRESHOLD / 4;
+
+function computeRadarScore(shaped) {
+  const scored = shaped.filter((s) => !s.unavailable);
+  if (!scored.length) return 0;
+  const mean = scored.reduce((sum, s) => sum + s.significance.score, 0) / scored.length;
+  return Math.min(100, Math.round((mean / RADAR_REFERENCE_MEAN) * 100));
+}
+
+/**
+ * "Quiet": thin volume AND a narrow intraday range.
+ *
+ * The inverse of the volume signal, and it needs both halves -- a stock can
+ * trade a wide range on low volume (gappy, illiquid) or grind a tight range on
+ * heavy volume (absorption). Neither is quiet. Volume is compared against the
+ * session-adjusted expectation for the same reason the volume signal is: at
+ * 10:00 every stock is below its full-day average.
+ */
+const QUIET_VOLUME_RATIO = 0.8;   // <80% of the volume expected by this hour
+const QUIET_RANGE_FRACTION = 0.015; // intraday high-low inside 1.5% of price
+
+function isQuiet(s, now = new Date()) {
+  if (!isNum(s.volume) || !isNum(s.avgVolume20d) || s.avgVolume20d <= 0) return false;
+  if (!isNum(s.dayHigh) || !isNum(s.dayLow) || !isNum(s.price) || s.price <= 0) return false;
+  const expected = s.avgVolume20d * sessionElapsedFraction(now);
+  if (expected <= 0) return false;
+  return (
+    s.volume < expected * QUIET_VOLUME_RATIO &&
+    (s.dayHigh - s.dayLow) / s.price < QUIET_RANGE_FRACTION
+  );
+}
+
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
 function shapeItem({ item, row, quote, benchmark, view, significance, now }) {
   const freshness = freshnessOf(row, now);
   const meta = lookup(item.symbol);
@@ -150,13 +205,18 @@ export async function buildWatchlist(userId, { now = new Date(), refresh = true 
   const views = getViews(userId);
   const status = marketStatus(now);
 
-  const { findById } = await import('../models/userModel.js');
+  // Per-user salience multipliers. A corrupt blob must not take down the read,
+  // but it must not vanish silently either -- the whole product is built on
+  // never pretending we know something we do not.
   const user = findById(userId);
   let userWeights = {};
-  if (user && user.preferences) {
+  if (user?.preferences) {
     try {
-      userWeights = JSON.parse(user.preferences);
-    } catch (e) {}
+      const parsed = JSON.parse(user.preferences);
+      if (parsed && typeof parsed === 'object') userWeights = parsed;
+    } catch (err) {
+      console.warn(`[watchlist] unreadable preferences for user ${userId}; using defaults`, err.message);
+    }
   }
 
   const shaped = items.map((item) => {
@@ -199,26 +259,17 @@ export async function buildWatchlist(userId, { now = new Date(), refresh = true 
   const baselines = shaped.map((s) => s.lastSeen?.at).filter(Boolean).sort();
   const baselineAt = baselines.length ? baselines[0] : null;
 
-  // Watchlist Pulse (Health Score): 0 - 100 based on significance score
-  let totalScore = shaped.reduce((sum, s) => sum + s.significance.score, 0);
-  const pulseScore = shaped.length > 0 ? Math.min(100, Math.round((totalScore / shaped.length) * 12)) : 0;
+  const radarScore = computeRadarScore(shaped);
 
-  // Watchlist Comparison: Average day change
-  let validChanges = shaped.filter(s => s.dayChangePct !== null);
-  const avgDayChange = validChanges.length > 0 
-    ? Number((validChanges.reduce((sum, s) => sum + s.dayChangePct, 0) / validChanges.length).toFixed(2)) 
-    : 0;
+  // How the list as a whole moved today. Only quoted rows count -- averaging a
+  // missing price in as 0% would report a calm list during an outage.
+  const validChanges = shaped.filter((s) => s.dayChangePct !== null);
+  const avgDayChange = validChanges.length
+    ? Number((validChanges.reduce((sum, s) => sum + s.dayChangePct, 0) / validChanges.length).toFixed(2))
+    : null;
 
-  // Correlations
-  const { findDivergingCorrelations } = await import('../utils/math.js');
   const divergingCorrelations = findDivergingCorrelations(shaped);
-
-  // Watchlist Digest: Quiet stocks (tight range, low volume)
-  // "Quiet" defined as: volume < avgVolume20d * 0.8 AND dayHigh - dayLow < price * 0.01 (1% range)
-  const quietStocks = shaped.filter(s => 
-    s.volume && s.avgVolume20d && (s.volume < s.avgVolume20d * 0.8) &&
-    s.dayHigh && s.dayLow && s.price && ((s.dayHigh - s.dayLow) / s.price < 0.015)
-  ).map(s => s.symbol);
+  const quietStocks = shaped.filter((s) => isQuiet(s, now)).map((s) => s.symbol);
 
   return {
     asOf: now.toISOString(),
@@ -236,7 +287,7 @@ export async function buildWatchlist(userId, { now = new Date(), refresh = true 
       unavailable: shaped.filter((s) => s.unavailable).length,
       unacknowledged: shaped.filter((s) => !s.lastSeen).length,
     },
-    pulseScore,
+    radarScore,
     avgDayChange,
     divergingCorrelations,
     quietStocks,

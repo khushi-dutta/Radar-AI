@@ -17,7 +17,7 @@
 import { istDateKey } from '../utils/marketHours.js';
 
 const BASE = 'https://query1.finance.yahoo.com/v8/finance/chart/';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) PulseWatchlist/1.0';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) RadarAI/1.0';
 const REQUEST_TIMEOUT_MS = 8000;
 
 /** Upstream failure with a transient/permanent classification attached. */

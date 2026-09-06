@@ -5,7 +5,7 @@
  * component ever touches fetch directly.
  */
 
-const TOKEN_KEY = 'pulse.token';
+const TOKEN_KEY = 'radar.token';
 
 export function getToken() {
   try {

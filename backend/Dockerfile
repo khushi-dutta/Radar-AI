@@ -16,7 +16,7 @@ COPY scripts ./scripts
 
 # The SQLite file lives on a volume so it survives container replacement.
 ENV DATA_DIR=/data
-ENV DB_PATH=/data/pulse.db
+ENV DB_PATH=/data/radar.db
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 

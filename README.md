@@ -12,38 +12,41 @@ React + Vite + Tailwind on the front, live NSE data.
 
 ---
 
-## Table of contents
+## Where to look
 
-- [Hackathon Winning Features](#hackathon-winning-features)
+Each evaluation criterion maps to the section that answers it. If you only read
+one, read the noisy-OR argument — it is the decision the rest of the system is
+shaped around.
+
+| Criterion | Where it is argued | The short version |
+|---|---|---|
+| **Engineering depth** | [Architecture](#architecture) · [How it scales](#how-it-scales) | One background worker owns all fetching, so upstream load scales with *distinct symbols*, not users. The read path is 3 queries and a pure O(n) loop at any list size. |
+| **Product & problem interpretation** | [What counts as a meaningful change](#what-counts-as-a-meaningful-change) · [The unit of the UI is a reason](#the-unit-of-the-ui-is-a-reason) | The brief's real question is "what changed *since I last looked*". That is a per-user baseline, not a day-change column — and visiting is not the same as acknowledging. |
+| **Edge cases & resilience** | [Handling stale, delayed and conflicting data](#handling-stale-delayed-and-conflicting-data) · [Edge cases handled](#edge-cases-handled) | The provider 429'd on the first call I ever made to it, so it is treated as hostile: monotonic writes, a reconciliation ladder for three conflicting "previous close" fields, and a rule that stale data is never rendered as live. |
+| **Code quality & simplicity** | [What I chose *not* to build](#what-i-chose-not-to-build) · [Tests](#tests) | Six signals, no indicator zoo, no LLM, no microservices. The scoring engine is a pure function, which is what makes 68 tests cheap. |
+| **Originality & thoughtfulness** | [Noisy-OR, not a weighted average](#the-one-decision-id-defend-hardest-noisy-or-not-a-weighted-average) | Averaging signals is the obvious combiner and it is wrong for attention: it lets four calm signals bury the one that is firing. |
+
+### Table of contents
+
 - [What counts as a meaningful change](#what-counts-as-a-meaningful-change)
 - [The one decision I'd defend hardest: noisy-OR, not a weighted average](#the-one-decision-id-defend-hardest-noisy-or-not-a-weighted-average)
 - [Architecture](#architecture)
 - [Handling stale, delayed and conflicting data](#handling-stale-delayed-and-conflicting-data)
 - [Edge cases handled](#edge-cases-handled)
 - [How it scales](#how-it-scales)
+- [What I chose *not* to build](#what-i-chose-not-to-build)
 - [Running it](#running-it)
 - [Tests](#tests)
 
 ---
 
-## Hackathon Winning Features
+## The unit of the UI is a reason
 
 The brief says *"don't build the obvious watchlist"*. The obvious watchlist is a
 table of tickers with green and red numbers, and its core failure is that it
-treats every row as equally important. Radar AI inverts the hierarchy and provides these key features:
-
-1. **Interactive Sector Treemap** 🗺️
-   - A beautiful heatmap clustering stocks by their sectors. Sized dynamically by volume and colored by day change. Instantly see where the money is flowing.
-2. **AI Market Narrative (TL;DR)** 📰
-   - A sparkling "Radar AI Insight" component that dynamically reads the watchlist data and writes a natural language sentence explaining *why* the market moved today.
-3. **Natural Language "Smart Alerts"** 💬
-   - A heuristic AI parser directly in the UI. Type *"Alert me when RELIANCE volume is 3x"* and the engine instantly parses the sentence without lag and translates it into a structured trading rule!
-4. **"Learn My Style" Adaptive Engine** 🧠
-   - The significance algorithm is no longer static. It tracks your preferences. If you repeatedly dismiss a card triggered by a *Volume Spike*, the backend silently decays the weight of the "Volume" signal by 5%. Over time, the algorithm learns what you ignore.
-
-### The significance ranking
-
-The unit of the UI is not a price, it's a **reason**:
+treats every row as equally important — so the user does the ranking, every
+time, by eye. This one inverts that: the unit of the UI is not a price, it's a
+**reason**.
 
 ```
 RELIANCE                                    ₹1,330.60
@@ -160,6 +163,61 @@ the breakout as its headline. `SALIENCE` values are documented inline in
 [`significance.js`](backend/src/services/significance.js) — they're judgement
 calls, not fitted parameters, and I say so in the code because there's no
 labelled "was this worth your attention" dataset to fit against.
+
+---
+
+## Built on top of the engine
+
+Four views layer on the scored list. Each one is held to the same standard as
+the engine: it must be able to say *why*, and it must stay silent when its
+inputs can't support the claim.
+
+**Radar score (0–100).** One number for "how much is going on right now".
+The scale is *derived*, not chosen: the reference point is a list whose mean
+significance is a quarter of the attention threshold — roughly one item in four
+worth opening — and that list reads 100. Unavailable rows are excluded rather
+than scored 0, because an outage must not render as a calm market.
+
+**Correlation divergence.** Pairs that normally move together and today do not.
+This is the divergence signal's argument again, but *empirical* rather than
+declared — two stocks may track each other for reasons no sector mapping
+encodes, and the day that breaks is the day something specific happened to one
+of them.
+
+> The first version correlated raw price *series*, which is the classic
+> statistical mistake and it is not a small one. Two unrelated stocks that both
+> drifted upward over three months correlate at ~0.95 because they share a
+> trend, not because they co-move — so in a rising market **every pair lights
+> up** and the feature becomes a random-pair generator with a confident number
+> attached. Converting to period-over-period returns first makes the series
+> stationary, so the coefficient measures what the UI claims it measures. There
+> is a regression test that builds two independent uptrends, asserts they
+> correlate above 0.9 on levels, and asserts the feature reports nothing.
+
+**Sector heatmap.** Cells sized by volume, coloured by day change. This is the
+one view that is deliberately *not* significance-ranked: it answers "where is
+the money moving" — a question about the whole board, where the flat spatial
+comparison is the point.
+
+**Adaptive signal weights.** Dismissing a card decays the salience of the signal
+that headlined it, per user. Decay alone was the obvious version and it is a
+one-way ratchet: dismissing is the *ordinary* way to clear a card, so every
+weight drifts monotonically to the floor and the engine gradually goes deaf.
+Pairing a 5% decay on the dismissed signal with a 1% recovery on the others
+gives the system a fixed point — a signal settles where the rate you dismiss it
+balances the rate you dismiss everything else, which measures *relative*
+preference. That is the only thing a dismissal is really evidence of. Weights
+floor at 0.4 rather than 0.1, and the personal-threshold signal is exempt
+entirely: a price you typed in yourself is an instruction, not an inference to
+second-guess.
+
+Alert rules (`volume 3x`, `within 2% of the 52-week high`) are the explicit
+counterpart to the inferred score. They share the engine's definitions rather
+than reimplementing them — a "volume spike" is the same session-adjusted ratio
+in both places, because two definitions of one word in one product is how a user
+stops trusting both. Alerts also refuse to fire off data classified `stale` or
+`unavailable`: an alert is a claim about *right now*, made from an observation
+we already know is out of date.
 
 ---
 
@@ -372,9 +430,13 @@ Saying no was most of the work.
 
 - **No LLM anywhere.** The brief's temptation is "AI-powered insights". A
   well-computed, explainable score beats a language model paraphrasing a price
-  change, and it can't hallucinate a breakout. The reason strings are templated
-  from the same numbers that produced the score, so they're always consistent
-  with the ranking.
+  change, and it can't hallucinate a breakout. The reason strings — including
+  the summary line at the top of the list, and the natural-language alert input
+  that turns *"alert me when RELIANCE volume is 3x"* into a structured rule —
+  are templated and parsed deterministically from the same numbers that produced
+  the score. That is a deliberate constraint, not a shortcut: it means the
+  prose can never contradict the ranking, the whole thing runs offline, and
+  every sentence on screen is reproducible from the row that generated it.
 - **No charting library.** One sparkline is 20 lines of SVG. Pulling in a
   charting dependency for a polyline would have been resume-driven.
 - **No portfolio, no order flow, no P&L tracking.** It's a watchlist. Buy price
@@ -449,7 +511,7 @@ Everything has a working default. `backend/.env` if you want to override:
 ```ini
 PORT=4000
 JWT_SECRET=change-me-in-production   # required in production, refuses to boot without it
-DB_PATH=./data/pulse.db
+DB_PATH=./data/radar.db
 CORS_ORIGIN=http://localhost:5173
 ```
 
@@ -461,7 +523,7 @@ CORS_ORIGIN=http://localhost:5173
 cd backend && npm test
 ```
 
-**54 tests, all passing.** Two suites, split by what they protect:
+**68 tests, all passing.** Three suites, split by what they protect:
 
 `significance.test.js` (33) — the engine, against a frozen clock so results are
 deterministic. Covers each signal in isolation, the noisy-OR properties (one
@@ -477,6 +539,16 @@ duplicate handling; a watchlist where *every* symbol is unpriced still renders;
 the anchor regression above (rebuilding the payload must not move it, only
 acknowledging may); and the 150-symbol performance assertion.
 
+`derived.test.js` (14) — the views layered on the engine, which is mostly a set
+of tests about when each one must stay *silent*. The spurious-correlation
+regression (two independent uptrends must not be reported as co-moving); a
+correlation that is undefined returns `null` rather than 0, because "no
+variance" and "uncorrelated" are different claims; mismatched history lengths
+compare the overlapping tail rather than index-for-index, which would silently
+correlate different calendar days; and the alert rules, including the pair that
+proves the session adjustment matters — identical volume numbers fire a 3x rule
+mid-session and correctly do not fire after the close.
+
 The engine being a pure function is what makes this practical — no HTTP, no
 fixtures, no mocking a market.
 
@@ -486,9 +558,10 @@ fixtures, no mocking a market.
 
 1. **Push notifications**, using the significance score as the interrupt
    threshold — the hard part is already built.
-2. **Learn the weights per user.** Dismissing volume-spike cards repeatedly
-   should lower volume salience *for you*. The engine is already a pure function
-   of a weights object, so this is a data problem, not a refactor.
+2. **Validate the adaptive weights on real behaviour.** The decay/recovery loop
+   is built and has a defensible fixed point, but its rates are reasoned rather
+   than measured — I have no dismissal data to fit them against, and a learning
+   loop nobody has watched converge is a hypothesis, not a feature.
 3. **Corporate-action awareness.** A 1:5 split is currently an 80% "drop" and
    would top the list, wrongly. Real detection needs an actions feed.
 4. **Earnings proximity** as a seventh signal — a 2% move the day before results

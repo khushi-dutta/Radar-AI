@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR ?? path.join(__dirname, '..', '..', 'data');
-const DB_PATH = process.env.DB_PATH ?? path.join(DATA_DIR, 'pulse.db');
+const DB_PATH = process.env.DB_PATH ?? path.join(DATA_DIR, 'radar.db');
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
