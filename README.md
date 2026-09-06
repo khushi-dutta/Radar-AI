@@ -1,8 +1,8 @@
-# Pulse — an attention-aware watchlist
+# Radar AI — an attention-aware watchlist
 
 > Every watchlist shows prices. This one shows what *matters*.
 >
-> Pulse scores each stock on unusual volume, range breakouts, sector divergence,
+> Radar AI scores each stock on unusual volume, range breakouts, sector divergence,
 > 52-week proximity and your own price levels — then ranks by what deserves your
 > attention. Come back after a day away and you don't see twenty unchanged
 > prices; you see the three things that actually moved, and why.
@@ -14,31 +14,36 @@ React + Vite + Tailwind on the front, live NSE data.
 
 ## Table of contents
 
-- [What I built and why](#what-i-built-and-why)
+- [Hackathon Winning Features](#hackathon-winning-features)
 - [What counts as a meaningful change](#what-counts-as-a-meaningful-change)
 - [The one decision I'd defend hardest: noisy-OR, not a weighted average](#the-one-decision-id-defend-hardest-noisy-or-not-a-weighted-average)
 - [Architecture](#architecture)
 - [Handling stale, delayed and conflicting data](#handling-stale-delayed-and-conflicting-data)
 - [Edge cases handled](#edge-cases-handled)
 - [How it scales](#how-it-scales)
-- [What I chose *not* to build](#what-i-chose-not-to-build)
 - [Running it](#running-it)
 - [Tests](#tests)
-- [If I had another week](#if-i-had-another-week)
 
 ---
 
-## What I built and why
+## Hackathon Winning Features
 
 The brief says *"don't build the obvious watchlist"*. The obvious watchlist is a
 table of tickers with green and red numbers, and its core failure is that it
-treats every row as equally important. It shows you twenty prices and makes
-**you** do the work of finding the one that matters. That work does not scale —
-past about ten stocks people stop reading the list and just check the two they
-already worry about.
+treats every row as equally important. Radar AI inverts the hierarchy and provides these key features:
 
-So Pulse inverts the hierarchy. The unit of the UI is not a price, it's a
-**reason**:
+1. **Interactive Sector Treemap** 🗺️
+   - A beautiful heatmap clustering stocks by their sectors. Sized dynamically by volume and colored by day change. Instantly see where the money is flowing.
+2. **AI Market Narrative (TL;DR)** 📰
+   - A sparkling "Radar AI Insight" component that dynamically reads the watchlist data and writes a natural language sentence explaining *why* the market moved today.
+3. **Natural Language "Smart Alerts"** 💬
+   - A heuristic AI parser directly in the UI. Type *"Alert me when RELIANCE volume is 3x"* and the engine instantly parses the sentence without lag and translates it into a structured trading rule!
+4. **"Learn My Style" Adaptive Engine** 🧠
+   - The significance algorithm is no longer static. It tracks your preferences. If you repeatedly dismiss a card triggered by a *Volume Spike*, the backend silently decays the weight of the "Volume" signal by 5%. Over time, the algorithm learns what you ignore.
+
+### The significance ranking
+
+The unit of the UI is not a price, it's a **reason**:
 
 ```
 RELIANCE                                    ₹1,330.60
@@ -54,7 +59,7 @@ exactly which signal caused it.
 
 The second idea is that a watchlist should be **stateful**. Day-change resets at
 every open, which makes it useless for the actual question — "what happened
-while I wasn't looking?" Pulse stores what you personally last *saw*
+while I wasn't looking?" Radar AI stores what you personally last *saw*
 (`user_stock_views`), so "since you last checked" spans the weekend, the
 three-day gap, the fortnight. That per-user baseline is what makes it a
 watchlist rather than a ticker.
@@ -83,7 +88,7 @@ confidently so: at 09:45 a perfectly ordinary stock has traded ~8% of its daily
 volume and looks dead; at 15:29 the same stock looks like a 1.0x. A "3x spike"
 rule fires constantly near the close and never fires in the morning.
 
-Pulse scales the baseline by the fraction of the session elapsed:
+Radar AI scales the baseline by the fraction of the session elapsed:
 
 ```
 expected = avgVolume20d × sessionElapsedFraction(now)
